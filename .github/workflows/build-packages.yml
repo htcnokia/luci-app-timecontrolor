@@ -1,22 +1,14 @@
-name: Build-luci-app-timecontrol(ipk&apk)
+name: Build-luci-app-timecontrol
 
 on:
   push:
     paths:
       - 'luci-app-timecontrol/**'
-      - 'Makefile'
-      - 'src/**'
-      - 'luasrc/**'
-      - 'htdocs/**'
-  # 必须将 workflow_dispatch 独立放在顶层，且不要添加 paths 限制
-  workflow_dispatch:
 
 env:
   TZ: Asia/Shanghai
-
 permissions:
   contents: write
-
 jobs:
   build:
     name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
@@ -27,15 +19,14 @@ jobs:
         arch:
           - aarch64_generic
         sdk:
-          - openwrt-23.05     # 编译出 IPK (21.02 ~ 23.05)
-          - openwrt-24.10     # 编译出 IPK (24.10)
-          - master            # 编译出 APK (SNAPSHOT / 24.10+ 新架构)
+          - openwrt-24.10
+          - master
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+          
       - name: Set current date
         id: date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
@@ -51,16 +42,20 @@ jobs:
             git log -1 --pretty=format:'%s' > commits.txt || true
           fi
 
+          # 保证文件末尾有换行，避免 here-doc 结束符粘到最后一行
           if [ -f commits.txt ] && [ -s commits.txt ]; then
             printf '\n' >> commits.txt
           fi
-
+          
+          # 将每一条非空行前面加上 "- " 以符合 markdown 列表格式
           if [ -f commits.txt ]; then
             awk 'NF { print "- " $0 }' commits.txt > commits_md.txt || true
           fi
 
+          # 使用唯一分隔符写入 GITHUB_OUTPUT（确保开始/结束分隔符在独立行）
           DELIM="END_OF_COMMIT_MSGS_$(date +%s%N)"
           printf 'commit_msgs<<%s\n' "$DELIM" >> "$GITHUB_OUTPUT"
+          # 如果 commits_md.txt 为空，下面 cat 不会输出内容，但结束分隔符仍然写入，符合多行输出格式
           cat commits_md.txt >> "$GITHUB_OUTPUT" || true
           printf '%s\n' "$DELIM" >> "$GITHUB_OUTPUT"
 
@@ -89,22 +84,25 @@ jobs:
       - name: Create compress files
         run: |
           zip -j Luci-app-timecontrol-${{ matrix.sdk }}.zip bin/packages/${{ matrix.arch }}/packages_ci/*
-
+     
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ steps.date.outputs.date }}
-          files: Luci-app-timecontrol-${{ matrix.sdk }}.zip
-          body: |
-            ### 更新日志：
-            
-            ${{ steps.get_commits.outputs.commit_msgs }}
+            token: ${{ secrets.GITHUB_TOKEN }}
+            body: |
 
-            #### 安装说明与格式区分：
-            
-            - **`*-openwrt-23.05.zip / *-openwrt-24.10.zip`** --> **`.ipk` 安装包**
-              安装命令：`opkg install luci-app-timecontrol*.ipk`
-            
-            - **`*-master.zip`** --> **`.apk` 安装包**
-              跳过证书安装命令：`apk add --allow-untrusted luci-app-timecontrol*.apk`
+             ### 更新日志：
+             
+             ${{ steps.get_commits.outputs.commit_msgs }}
+
+             #### 注：
+             
+             - **`Luci-app-timecontrol-openwrt-24.10.zip`** --> ipk安装包
+             - **`Luci-app-timecontrol-master.zip`** --> apk安装包
+
+             - **`*.apk` 跳过证书安装命令** 
+             `apk add --allow-untrusted luci-app-timecontrol.apk`
+          
+            tag_name: ${{ steps.date.outputs.date }}
+            files: Luci-app-timecontrol-${{ matrix.sdk }}.zip
+ 
