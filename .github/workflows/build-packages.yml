@@ -1,0 +1,59 @@
+name: Build IPK & APK Packages
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for OpenWrt ${{ matrix.openwrt_version }} (${{ matrix.sdk_arch }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- 1. 经典 IPK 体系 (opkg) ---
+          - openwrt_version: "22.03.5"
+            sdk_arch: "x86/64"
+            pkg_type: "ipk"
+          - openwrt_version: "23.05.0"
+            sdk_arch: "x86/64"
+            pkg_type: "ipk"
+
+          # --- 2. 新一代 APK 体系 (OpenWrt 24.10+ / SNAPSHOT) ---
+          - openwrt_version: "SNAPSHOT"
+            sdk_arch: "x86/64"
+            pkg_type: "apk"
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          path: 'luci-app-timecontrol'
+
+      - name: Build Package via OpenWrt SDK
+        uses: openwrt/gh-action-sdk@v7
+        env:
+          ARCH: ${{ matrix.sdk_arch }}
+          VER: ${{ matrix.openwrt_version }}
+          PACKAGES: luci-app-timecontrol
+          NO_EXTRA_FEEDS: '1'
+
+      - name: Organize Artifacts
+        run: |
+          mkdir -p output/
+          # 收集编译出来的 IPK 或 APK
+          find bin/ -type f \( -name "*.ipk" -o -name "*.apk" \) -exec cp {} output/ \;
+          echo "=== 编译出的文件列表 ==="
+          ls -lh output/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pkg_type }}-openwrt-${{ matrix.openwrt_version }}-${{ matrix.sdk_arch }}
+          path: output/*
