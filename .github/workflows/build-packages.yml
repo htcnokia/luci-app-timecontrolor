@@ -1,4 +1,4 @@
-name: Build-luci-app-timecontrol
+name: Build-luci-app-timecontrol(ipk&apk)
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'luasrc/**'
       - 'htdocs/**'
+  # 必须将 workflow_dispatch 独立放在顶层，且不要添加 paths 限制
   workflow_dispatch:
 
 env:
@@ -26,9 +27,9 @@ jobs:
         arch:
           - aarch64_generic
         sdk:
-          - openwrt-23.05     # 编译出 IPK (适用 21.02 ~ 23.05)
-          - openwrt-24.10     # 编译出 IPK (适用 24.10 早期过渡)
-          - master            # 编译出 APK (适用 OpenWrt SNAPSHOT / 24.10+ 新架构)
+          - openwrt-23.05     # 编译出 IPK (21.02 ~ 23.05)
+          - openwrt-24.10     # 编译出 IPK (24.10)
+          - master            # 编译出 APK (SNAPSHOT / 24.10+ 新架构)
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +38,7 @@ jobs:
 
       - name: Set current date
         id: date
-        run: echo "date=$(date +'\%Y-\%m-\%d')" >> $GITHUB_OUTPUT
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Get all commit messages
         id: get_commits
