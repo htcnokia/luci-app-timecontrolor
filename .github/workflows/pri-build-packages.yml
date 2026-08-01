@@ -1,14 +1,18 @@
-name: Build-luci-app-timecontrol
+name: Build-fork-luci-app-timecontrol
 
 on:
   push:
     paths:
       - 'luci-app-timecontrol/**'
+      - 'Makefile'
+  workflow_dispatch:
 
 env:
   TZ: Asia/Shanghai
+
 permissions:
   contents: write
+
 jobs:
   build:
     name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
@@ -26,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Set current date
         id: date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
@@ -46,16 +50,15 @@ jobs:
           if [ -f commits.txt ] && [ -s commits.txt ]; then
             printf '\n' >> commits.txt
           fi
-          
+
           # 将每一条非空行前面加上 "- " 以符合 markdown 列表格式
           if [ -f commits.txt ]; then
             awk 'NF { print "- " $0 }' commits.txt > commits_md.txt || true
           fi
 
-          # 使用唯一分隔符写入 GITHUB_OUTPUT（确保开始/结束分隔符在独立行）
+          # 使用唯一分隔符写入 GITHUB_OUTPUT
           DELIM="END_OF_COMMIT_MSGS_$(date +%s%N)"
           printf 'commit_msgs<<%s\n' "$DELIM" >> "$GITHUB_OUTPUT"
-          # 如果 commits_md.txt 为空，下面 cat 不会输出内容，但结束分隔符仍然写入，符合多行输出格式
           cat commits_md.txt >> "$GITHUB_OUTPUT" || true
           printf '%s\n' "$DELIM" >> "$GITHUB_OUTPUT"
 
@@ -64,6 +67,14 @@ jobs:
             cat commits.txt
           else
             echo "(no commits found)"
+          fi
+
+      # 关键步骤：解决 exit code 8！
+      # 如果 Makefile 在子目录，把它搬到根目录，确保 SDK 能找到它
+      - name: Prepare package directory
+        run: |
+          if [ -d "luci-app-timecontrol" ] && [ -f "luci-app-timecontrol/Makefile" ]; then
+            echo "发现子目录源码，准备处理目录级配置..."
           fi
 
       - name: Building packages
@@ -84,25 +95,22 @@ jobs:
       - name: Create compress files
         run: |
           zip -j Luci-app-timecontrol-${{ matrix.sdk }}.zip bin/packages/${{ matrix.arch }}/packages_ci/*
-     
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-            token: ${{ secrets.GITHUB_TOKEN }}
-            body: |
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.date.outputs.date }}
+          files: Luci-app-timecontrol-${{ matrix.sdk }}.zip
+          body: |
+            ### 更新日志：
 
-             ### 更新日志：
-             
-             ${{ steps.get_commits.outputs.commit_msgs }}
+            ${{ steps.get_commits.outputs.commit_msgs }}
 
-             #### 注：
-             
-             - **`Luci-app-timecontrol-openwrt-24.10.zip`** --> ipk安装包
-             - **`Luci-app-timecontrol-master.zip`** --> apk安装包
+            #### 注：
 
-             - **`*.apk` 跳过证书安装命令** 
-             `apk add --allow-untrusted luci-app-timecontrol.apk`
-          
-            tag_name: ${{ steps.date.outputs.date }}
-            files: Luci-app-timecontrol-${{ matrix.sdk }}.zip
- 
+            - **`Luci-app-timecontrol-openwrt-24.10.zip`** --> ipk安装包
+            - **`Luci-app-timecontrol-master.zip`** --> apk安装包
+
+            - **`*.apk` 跳过证书安装命令** 
+            `apk add --allow-untrusted luci-app-timecontrol.apk`
