@@ -101,7 +101,7 @@ set_Rules() {
 			fi
 
 			local chain target
-			for table in filter nat; do
+			for table in filter nat mangle; do
 				case $table in
 				filter)
 					chain="timecontrol_forward_reject"
@@ -110,6 +110,10 @@ set_Rules() {
 				nat)
 					chain="timecontrol_dstnat_accept"
 					target="ACCEPT"
+					;;
+				mangle)
+					chain="timecontrol_mangle_prerouting_drop"
+					target="DROP"
 					;;
 				*) ;;
 				esac
@@ -159,7 +163,7 @@ set_Rules() {
 			iifname_param="iifname { ${interface} } "
 		fi
 
-		TZ=UTC nft "add rule inet fw4 timecontrol_forward_reject ${ether_saddr_param} ${meta_hour_param} ${meta_day_param} ${iifname_param} counter jump handle_reject comment \"!fw4: Time control\""
+		TZ=UTC nft "add rule inet fw4 timecontrol_forward_reject ${ether_saddr_param} ${meta_hour_param} ${meta_day_param} ${iifname_param} counter drop comment \"!fw4: Time control\""
 		TZ=UTC nft "add rule inet fw4 timecontrol_dstnat_accept ${ether_saddr_param} ${meta_hour_param} ${meta_day_param} ${iifname_param} counter accept comment \"!fw4: Time control\""
 	fi
 
@@ -334,16 +338,15 @@ set_nftablesChains() {
 
 set_nftablesRules() {
 
-	for chain in forward dstnat; do
+	for chain in forward dstnat mangle_prerouting; do
 		local jumpChain
 		case $chain in
-		forward)
-			jumpChain="timecontrol_forward_reject"
-			;;
 		dstnat)
 			jumpChain="timecontrol_dstnat_accept"
 			;;
-		*) ;;
+		*)
+			jumpChain="timecontrol_forward_reject"
+			;;
 		esac
 
 		first_rule=$(nft list chain inet fw4 $chain | sed -n '4p' | grep -E "$jumpChain")
@@ -360,13 +363,16 @@ set_nftablesRules() {
 
 set_iptablesChains() {
 	local jumpChain
-	for table in filter nat; do
+	for table in filter nat mangle; do
 		case $table in
 		filter)
 			jumpChain="timecontrol_forward_reject"
 			;;
 		nat)
 			jumpChain="timecontrol_dstnat_accept"
+			;;
+		mangle)
+			jumpChain="timecontrol_mangle_prerouting_drop"
 			;;
 		*) ;;
 		esac
@@ -392,7 +398,7 @@ set_iptablesChains() {
 
 set_iptablesRules() {
 	local chain jumpChain
-	for table in filter nat; do
+	for table in filter nat mangle; do
 		case $table in
 		filter)
 			chain="FORWARD"
@@ -401,6 +407,10 @@ set_iptablesRules() {
 		nat)
 			chain="PREROUTING"
 			jumpChain="timecontrol_dstnat_accept"
+			;;
+		mangle)
+			chain="PREROUTING"
+			jumpChain="timecontrol_mangle_prerouting_drop"
 			;;
 		*) ;;
 		esac
@@ -506,7 +516,7 @@ stop() {
 
 	if [ -z "$FW4" ]; then
 		local chain jumpChain
-		for table in filter nat; do
+		for table in filter nat mangle; do
 			case $table in
 			filter)
 				chain="FORWARD"
@@ -515,6 +525,10 @@ stop() {
 			nat)
 				chain="PREROUTING"
 				jumpChain="timecontrol_dstnat_accept"
+				;;
+			mangle)
+				chain="PREROUTING"
+				jumpChain="timecontrol_mangle_prerouting_drop"
 				;;
 			*) ;;
 			esac
@@ -528,16 +542,15 @@ stop() {
 		done
 		cleanup_ipset
 	else
-		for chain in forward dstnat; do
+		for chain in forward dstnat mangle_prerouting; do
 			local jumpChain
 			case $chain in
-			forward)
-				jumpChain="timecontrol_forward_reject"
-				;;
 			dstnat)
 				jumpChain="timecontrol_dstnat_accept"
 				;;
-			*) ;;
+			*)
+				jumpChain="timecontrol_forward_reject"
+				;;
 			esac
 			rule_handles=$(nft -a list chain inet fw4 $chain | grep "$jumpChain" | awk '{print $NF}')
 			for handle in $rule_handles; do
